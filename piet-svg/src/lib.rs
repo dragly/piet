@@ -242,84 +242,7 @@ impl piet::RenderContext for RenderContext {
     }
 
     fn draw_text(&mut self, layout: &Self::TextLayout, pos: impl Into<Point>) {
-        let pos = pos.into();
-
-        let color = {
-            let (r, g, b, a) = layout.text_color.as_rgba8();
-            format!("rgba({}, {}, {}, {})", r, g, b, a as f64 * (100. / 255.))
-        };
-
-        let mut x = pos.x;
-        // SVG doesn't do multiline text, and so doesn't have a concept of text width. We can do
-        // alignment though, using text-anchor. TODO eventually we should generate a separate text
-        // span for each line (having laid out the multiline text ourselves.
-        let anchor = match (layout.max_width, layout.alignment) {
-            (width, TextAlignment::End) if width.is_finite() && width > 0. => {
-                x += width;
-                "text-anchor:end"
-            }
-            (width, TextAlignment::Center) if width.is_finite() && width > 0. => {
-                x += width * 0.5;
-                "text-anchor:middle"
-            }
-            _ => "",
-        };
-
-        // If we are using a named font, then mark it for inclusion.
-        self.text()
-            .seen_fonts
-            .lock()
-            .unwrap()
-            .insert(layout.font_face.clone());
-
-        // We use the top of the text for y position, but SVG uses baseline, so we need to convert
-        // between the two.
-        //
-        // `dominant-baseline` gets us most of the way (to the top of the ascender), so we add a
-        // small fiddle factor in to cover the difference between the top of the line and the top
-        // of the ascender (currently 6% of the font height, calcuated by eye).
-        let y = pos.y + 0.06 * layout.size().height;
-        let mut text = svg::node::element::Text::new()
-            .set("x", x)
-            .set("y", y)
-            .set("dominant-baseline", "hanging")
-            .set(
-                "style",
-                format!(
-                    "font-size:{}pt;\
-                        font-family:\"{}\";\
-                        font-weight:{};\
-                        font-style:{};\
-                        text-decoration:{};\
-                        fill:{};\
-                        {}",
-                    layout.font_size,
-                    layout.font_face.family.name(),
-                    layout.font_face.weight.to_raw(),
-                    match layout.font_face.style {
-                        FontStyle::Regular => "normal",
-                        FontStyle::Italic => "italic",
-                    },
-                    match (layout.underline, layout.strikethrough) {
-                        (false, false) => "none",
-                        (false, true) => "line-through",
-                        (true, false) => "underline",
-                        (true, true) => "underline line-through",
-                    },
-                    color,
-                    anchor,
-                ),
-            )
-            .add(svg::node::Text::new(layout.text()));
-
-        let affine = self.current_transform();
-        if affine != Affine::IDENTITY {
-            text.assign("transform", xf_val(&affine));
-        }
-        if let Some(id) = self.state.clip {
-            text.assign("clip-path", format!("url(#{})", id.to_string()));
-        }
-        self.doc.append(text);
+        unimplemented!()
     }
 
     fn save(&mut self) -> Result<()> {
@@ -341,41 +264,6 @@ impl piet::RenderContext for RenderContext {
             format!("width:{}px;height:{}px;", self.size.width, self.size.height),
         );
 
-        let text = (*self.text()).clone();
-        let mut seen_fonts = text.seen_fonts.lock().unwrap();
-        if !seen_fonts.is_empty() {
-            // include fonts
-            let mut style = String::new();
-            for face in &*seen_fonts {
-                if face.family.name().contains('"') {
-                    panic!("font family name contains `\"`");
-                }
-                // TODO convert font to woff2 to save space in svg output, maybe
-                writeln!(
-                    &mut style,
-                    "@font-face {{\n\
-                        font-family: \"{}\";\n\
-                        font-weight: {};\n\
-                        font-style: {};\n\
-                        src: url(\"data:application/x-font-opentype;charset=utf-8;base64,{}\");\n\
-                    }}",
-                    face.family.name(),
-                    face.weight.to_raw(),
-                    match face.style {
-                        FontStyle::Regular => "normal",
-                        FontStyle::Italic => "italic",
-                    },
-                    base64::display::Base64Display::with_config(
-                        &text.font_data(face)?,
-                        base64::STANDARD
-                    ),
-                )
-                .unwrap();
-            }
-            self.doc.append(svg::node::element::Style::new(style));
-        }
-
-        seen_fonts.clear();
         Ok(())
     }
 
